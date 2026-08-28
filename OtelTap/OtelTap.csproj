@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Path to the Rust-based oteltap-core project -->
+    <OtelTapCoreDir>..\..\OtelTap-Rust\oteltap-core</OtelTapCoreDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$([MSBuild]::IsOSPlatform(`Windows`))' == 'true'">
+    <OtelTapCoreLibFileName>oteltap_core.dll</OtelTapCoreLibFileName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$([MSBuild]::IsOSPlatform(`OSX`))' == 'true'">
+    <OtelTapCoreLibFileName>liboteltap_core.dylib</OtelTapCoreLibFileName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$([MSBuild]::IsOSPlatform(`Linux`))' == 'true'">
+    <OtelTapCoreLibFileName>liboteltap_core.so</OtelTapCoreLibFileName>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <OtelTapCoreDll>$(OtelTapCoreDir)\target\release\$(OtelTapCoreLibFileName)</OtelTapCoreDll>
+  </PropertyGroup>
+
+  <!-- Builds the native oteltap_core lib in a cross-platform manner -->
+  <Target Name="BuildOtelTapCore" BeforeTargets="BeforeBuild">
+    <Exec Command="cargo build --release" WorkingDirectory="$(OtelTapCoreDir)" />
+  </Target>
+
+  <ItemGroup>
+    <None Include="$(OtelTapCoreDll)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>$(OtelTapCoreLibFileName)</Link>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.36.0" />
+  </ItemGroup>
+
+</Project>
