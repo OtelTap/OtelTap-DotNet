@@ -29,6 +29,15 @@ namespace OtelTap
         private ImmutableArray<Channel<LogRecord>> logSubscribers = ImmutableArray<Channel<LogRecord>>.Empty;
         private ImmutableArray<Channel<Metric>> metricSubscribers = ImmutableArray<Channel<Metric>>.Empty;
 
+        private readonly List<(Func<Span, bool> predicate, TaskCompletionSource<Span> completionSource)> traceAwaiters = new();
+        private readonly Lock traceAwaitersLock = new();
+
+        private readonly List<(Func<LogRecord, bool> predicate, TaskCompletionSource<LogRecord> completionSource)> logAwaiters = new();
+        private readonly Lock logAwaitersLock = new();
+
+        private readonly List<(Func<Metric, bool> predicate, TaskCompletionSource<Metric> completionSource)> metricAwaiters = new();
+        private readonly Lock metricAwaitersLock = new();
+
         private OtelTapHttpProtobufReceiver(ulong handle, Action<string, Exception?>? log)
         {
             this.handle = handle;
@@ -94,6 +103,12 @@ namespace OtelTap
             return new OtelTapHttpProtobufReceiver(handle, settings.Log);
         }
 
+        /// <summary>
+        /// Starts a <see cref="OtelTapHttpProtobufReceiver"/>.
+        /// </summary>
+        /// <param name="settings">Config settings</param>
+        /// <returns>The running <see cref="OtelTapHttpProtobufReceiver"/> instance.</returns>
+        /// <exception cref="OtelTapInitializationException"></exception>
         public static async Task<OtelTapHttpProtobufReceiver> StartAsync(OtelTapHttpProtobufReceiverSettings settings)
         {
             // oteltap_core is all synchronous.
@@ -180,6 +195,87 @@ namespace OtelTap
             {
                 Unsubscribe(ref this.metricSubscribers, channel);
             }
+        }
+
+        /// <summary>
+        /// Awaits a trace that matches the given predicate.
+        /// </summary>
+        /// <param name="predicate">Predicate to be matched against incoming traces</param>
+        /// <param name="cancellationToken">Cancellation token to cancel the await operation</param>
+        /// <returns>Task that completes with the matching trace span</returns>
+        public Task<Span> AwaitTraceAsync(Func<Span, bool> predicate, CancellationToken cancellationToken = default)
+        {
+            var completionSource = new TaskCompletionSource<Span>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            lock (this.traceAwaitersLock)
+            {
+                this.traceAwaiters.Add((predicate, completionSource));
+            }
+
+            cancellationToken.Register(() =>
+            {
+                lock (this.traceAwaitersLock)
+                {
+                    this.traceAwaiters.RemoveAll(a => a.completionSource == completionSource);
+                }
+                completionSource.TrySetCanceled(cancellationToken);
+            });
+
+            return completionSource.Task;
+        }
+
+        /// <summary>
+        /// Awaits a log that matches the given predicate.
+        /// </summary>
+        /// <param name="predicate">Predicate to be matched against incoming logs</param>
+        /// <param name="cancellationToken">Cancellation token to cancel the await operation</param>
+        /// <returns>Task that completes with the matching log record</returns>
+        public Task<LogRecord> AwaitLogAsync(Func<LogRecord, bool> predicate, CancellationToken cancellationToken = default)
+        {
+            var completionSource = new TaskCompletionSource<LogRecord>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            lock (this.logAwaitersLock)
+            {
+                this.logAwaiters.Add((predicate, completionSource));
+            }
+
+            cancellationToken.Register(() =>
+            {
+                lock (this.logAwaitersLock)
+                {
+                    this.logAwaiters.RemoveAll(a => a.completionSource == completionSource);
+                }
+                completionSource.TrySetCanceled(cancellationToken);
+            });
+
+            return completionSource.Task;
+        }
+
+        /// <summary>
+        /// Awaits a metric that matches the given predicate.
+        /// </summary>
+        /// <param name="predicate">Predicate to be matched against incoming metrics</param>
+        /// <param name="cancellationToken">Cancellation token to cancel the await operation</param>
+        /// <returns>Task that completes with the matching metric</returns>
+        public Task<Metric> AwaitMetricAsync(Func<Metric, bool> predicate, CancellationToken cancellationToken = default)
+        {
+            var completionSource = new TaskCompletionSource<Metric>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            lock (this.metricAwaitersLock)
+            {
+                this.metricAwaiters.Add((predicate, completionSource));
+            }
+
+            cancellationToken.Register(() =>
+            {
+                lock (this.metricAwaitersLock)
+                {
+                    this.metricAwaiters.RemoveAll(a => a.completionSource == completionSource);
+                }
+                completionSource.TrySetCanceled(cancellationToken);
+            });
+
+            return completionSource.Task;
         }
 
         public void Dispose()
@@ -285,6 +381,24 @@ namespace OtelTap
                 {
                     channel.Writer.TryWrite(span);
                 }
+
+                // Notifying all awaiters
+                lock (this.traceAwaitersLock)
+                {
+                    for (int i = 0; i < this.traceAwaiters.Count; i++)
+                    {
+                        var (predicate, completionSource) = this.traceAwaiters[i];
+
+                        // If there's an awaiter for this span, complete it and remove it from the list.
+                        // Intentionally doing it only once - multiple awaiters must complete independently, and in order.
+                        if (predicate(span))
+                        {
+                            completionSource.TrySetResult(span);
+                            this.traceAwaiters.RemoveAt(i);
+                            break;
+                        }
+                    }
+                }
             }           
         }
 
@@ -320,6 +434,24 @@ namespace OtelTap
                 {
                     channel.Writer.TryWrite(log);
                 }
+
+                // Notifying all awaiters
+                lock (this.logAwaitersLock)
+                {
+                    for (int i = 0; i < this.logAwaiters.Count; i++)
+                    {
+                        var (predicate, completionSource) = this.logAwaiters[i];
+
+                        // If there's an awaiter for this log, complete it and remove it from the list.
+                        // Intentionally doing it only once - multiple awaiters must complete independently, and in order.
+                        if (predicate(log))
+                        {
+                            completionSource.TrySetResult(log);
+                            this.logAwaiters.RemoveAt(i);
+                            break;
+                        }
+                    }
+                }
             }           
         }
 
@@ -354,6 +486,24 @@ namespace OtelTap
                 foreach (var channel in this.metricSubscribers)
                 {
                     channel.Writer.TryWrite(metric);
+                }
+
+                // Notifying all awaiters
+                lock (this.metricAwaitersLock)
+                {
+                    for (int i = 0; i < this.metricAwaiters.Count; i++)
+                    {
+                        var (predicate, completionSource) = this.metricAwaiters[i];
+
+                        // If there's an awaiter for this metric, complete it and remove it from the list.
+                        // Intentionally doing it only once - multiple awaiters must complete independently, and in order.
+                        if (predicate(metric))
+                        {
+                            completionSource.TrySetResult(metric);
+                            this.metricAwaiters.RemoveAt(i);
+                            break;
+                        }
+                    }
                 }
             }           
         }
