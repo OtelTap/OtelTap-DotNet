@@ -7,9 +7,11 @@ name: Pack NuGet
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
+    inputs:
+      version:
+        description: 'NuGet package version to pack/push (e.g. 0.1.0-beta1)'
+        required: true
+        default: '0.1.0'
 
 env:
   CARGO_TERM_COLOR: always
@@ -103,11 +105,9 @@ jobs:
         run: dotnet restore OtelTap/OtelTap.csproj
 
       - name: Pack
-        run: dotnet pack OtelTap/OtelTap.csproj -c Release -o ./nupkg -p:SkipOtelTapCoreNativeBuild=true
+        run: dotnet pack OtelTap/OtelTap.csproj -c Release -o ./nupkg -p:SkipOtelTapCoreNativeBuild=true -p:Version=${{ inputs.version }}
 
-      - name: Upload nupkg artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: nupkg
-          path: ./nupkg/*.nupkg
-          if-no-files-found: error
+      - name: Push to nuget.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: dotnet nuget push ./nupkg/*.nupkg --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
