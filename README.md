@@ -3,6 +3,7 @@
 **OtelTap** is a .NET (C#) client library that wraps [OtelTap-Rust](https://github.com/OtelTap/OtelTap-Rust)'s embeddable OTLP (OpenTelemetry Protocol) receiver, giving .NET tests an idiomatic, `async`/`IAsyncEnumerable`-based API to **await and assert on real telemetry** (traces, logs, metrics) emitted by the system under test — instead of guessing timing or mocking the OTel SDK.
 
 [![.NET](https://github.com/OtelTap/OtelTap-DotNet/actions/workflows/dotnet.yml/badge.svg)](https://github.com/OtelTap/OtelTap-DotNet/actions/workflows/dotnet.yml)
+[![NuGet](https://img.shields.io/nuget/v/OtelTap.svg)](https://www.nuget.org/packages/OtelTap)
 
 ## Built for agentic AI development
 
@@ -40,6 +41,20 @@ When testing a service that emits OpenTelemetry data, you usually want to:
 Background polling loops (one per signal type) continuously pull decoded items from the native library and dispatch them; `Dispose()` stops the receiver, cancels the polling loops, and releases the native handle.
 
 > **Note:** only the **OTLP/HTTP protobuf** transport is supported (`Content-Type: application/x-protobuf`) — this is the recommended encoding for OTLP over HTTP (the OTLP spec treats HTTP/JSON as debug-only). OTLP/gRPC is not implemented.
+
+## Installation
+
+OtelTap is published on [NuGet.org](https://www.nuget.org/packages/OtelTap) as the [`OtelTap`](https://www.nuget.org/packages/OtelTap) package, with native `oteltap_core` binaries bundled for `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx-x64`, and `osx-arm64` — no separate Rust toolchain or build step required for consumers.
+
+```sh
+dotnet add package OtelTap
+```
+
+```xml
+<ItemGroup>
+  <PackageReference Include="OtelTap" Version="1.0.0" />
+</ItemGroup>
+```
 
 ## Usage
 
@@ -80,7 +95,7 @@ receiver.Dispose();
 
 `Span`, `LogRecord`, and `Metric` are the standard `opentelemetry-proto` generated types (see `OtelTap/GeneratedOtlpProtobuf/`), so all the usual fields (attributes, status, resource, etc.) are available directly on the objects you await or stream.
 
-## Prerequisites & building
+## Prerequisites & building from source
 
 - [.NET SDK](https://dotnet.microsoft.com/) — targets `net10.0`.
 - [Rust toolchain](https://rustup.rs/) — edition 2024, so **Rust 1.85 or newer** — required to build the native `oteltap_core` dependency.
