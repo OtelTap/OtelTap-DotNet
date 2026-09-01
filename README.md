@@ -80,7 +80,7 @@ receiver.Dispose();
 
 ## Prerequisites & building
 
-- [.NET SDK](https://dotnet.microsoft.com/) — targets `net9.0`.
+- [.NET SDK](https://dotnet.microsoft.com/) — targets `net10.0`.
 - [Rust toolchain](https://rustup.rs/) — edition 2024, so **Rust 1.85 or newer** — required to build the native `oteltap_core` dependency.
 - A checkout of **[OtelTap-Rust](https://github.com/OtelTap/OtelTap-Rust) as a sibling directory** to this repo — i.e. both `OtelTap-Rust/` and `OtelTap-DotNet/` under the same parent folder — since `OtelTap.csproj` builds `oteltap-core` from `../../OtelTap-Rust/oteltap-core` (relative to the `OtelTap/` project folder) via `cargo build --release` as a pre-build step.
 
