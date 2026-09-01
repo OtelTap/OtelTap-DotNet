@@ -20,6 +20,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Clone OtelTap-Rust
+      working-directory: ${{ github.workspace }}
+      run: git clone https://github.com/OtelTap/OtelTap-Rust.git ../OtelTap-Rust
+      
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
