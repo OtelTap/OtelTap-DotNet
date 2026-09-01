@@ -63,6 +63,7 @@ using OtelTap;
 
 var receiver = OtelTapHttpProtobufReceiver.Start(new OtelTapHttpProtobufReceiverSettings(
     HttpPort: 4318,
+    ListenOnAllInterfaces: false,
     PrintTracesAsNdjson: true,
     PrintLogsAsNdjson: true,
     PrintMetricsAsNdjson: true,
