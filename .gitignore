@@ -39,6 +39,9 @@ ScaffoldingReadMe.txt
 # NuGet Symbol Packages
 *.snupkg
 
+# Staged native oteltap_core binaries for `dotnet pack` (populated locally or by CI, see OtelTap.csproj)
+OtelTap/runtimes/
+
 # dotenv environment variables file
 .env
 

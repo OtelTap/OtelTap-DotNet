@@ -7,9 +7,39 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- NuGet package metadata -->
+  <PropertyGroup>
+    <PackageId>OtelTap</PackageId>
+    <Version Condition="'$(Version)' == ''">0.1.0</Version>
+    <Authors>OtelTap</Authors>
+    <Description>A .NET client library that wraps OtelTap-Rust's embeddable OTLP receiver, giving .NET tests an idiomatic, async/IAsyncEnumerable-based API to await and assert on real telemetry (traces, logs, metrics).</Description>
+    <PackageProjectUrl>https://github.com/OtelTap/OtelTap-DotNet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/OtelTap/OtelTap-DotNet</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>opentelemetry;otlp;testing;telemetry</PackageTags>
+    <!-- We ship our own native runtime assets under runtimes\**, not a single flat native lib -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <!-- runtimes\ is a build-time staging folder (populated by StageOtelTapCoreNativeForPacking below), not
+         source: keep the SDK's default implicit item globs from picking it up (it's added explicitly instead). -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);runtimes\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
   <PropertyGroup>
     <!-- Path to the Rust-based oteltap-core project -->
     <OtelTapCoreDir>..\..\OtelTap-Rust\oteltap-core</OtelTapCoreDir>
+    <!-- Root folder where prebuilt, per-RID native binaries are staged for packing (see runtimes\<rid>\native\<file>) -->
+    <OtelTapCoreRuntimesDir>runtimes</OtelTapCoreRuntimesDir>
+    <!-- Current machine's RID, used to stage the locally-built native lib for packing when no CI-assembled runtimes\ tree exists -->
+    <OtelTapCoreCurrentRid Condition="'$([MSBuild]::IsOSPlatform(`Windows`))' == 'true'">win-x64</OtelTapCoreCurrentRid>
+    <OtelTapCoreCurrentRid Condition="'$([MSBuild]::IsOSPlatform(`OSX`))' == 'true' And '$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)' == 'Arm64'">osx-arm64</OtelTapCoreCurrentRid>
+    <OtelTapCoreCurrentRid Condition="'$([MSBuild]::IsOSPlatform(`OSX`))' == 'true' And '$(OtelTapCoreCurrentRid)' == ''">osx-x64</OtelTapCoreCurrentRid>
+    <OtelTapCoreCurrentRid Condition="'$([MSBuild]::IsOSPlatform(`Linux`))' == 'true' And '$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)' == 'Arm64'">linux-arm64</OtelTapCoreCurrentRid>
+    <OtelTapCoreCurrentRid Condition="'$([MSBuild]::IsOSPlatform(`Linux`))' == 'true' And '$(OtelTapCoreCurrentRid)' == ''">linux-x64</OtelTapCoreCurrentRid>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$([MSBuild]::IsOSPlatform(`Windows`))' == 'true'">
@@ -26,17 +56,48 @@
     <OtelTapCoreDll>$(OtelTapCoreDir)\target\release\$(OtelTapCoreLibFileName)</OtelTapCoreDll>
   </PropertyGroup>
 
-  <!-- Builds the native oteltap_core lib in a cross-platform manner -->
-  <Target Name="BuildOtelTapCore" BeforeTargets="BeforeBuild">
+  <!-- Builds the native oteltap_core lib in a cross-platform manner. Skippable (e.g. in CI packing jobs
+       that assemble prebuilt binaries from multiple OSes) via -p:SkipOtelTapCoreNativeBuild=true. -->
+  <Target Name="BuildOtelTapCore" BeforeTargets="BeforeBuild" Condition="'$(SkipOtelTapCoreNativeBuild)' != 'true'">
     <Exec Command="cargo build --release" WorkingDirectory="$(OtelTapCoreDir)" />
   </Target>
 
+  <!-- Dev inner-loop: copy the locally-built native lib next to the managed assembly so F5/dotnet run/test works. -->
   <ItemGroup>
-    <None Include="$(OtelTapCoreDll)">
+    <None Include="$(OtelTapCoreDll)" Condition="Exists('$(OtelTapCoreDll)')" Pack="false">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>$(OtelTapCoreLibFileName)</Link>
     </None>
   </ItemGroup>
+
+  <!-- Packing: NuGet's RID-aware native-asset convention is "runtimes\<rid>\native\<file>", which is
+       restored/copied automatically for consumers that specify a RuntimeIdentifier. If a multi-platform
+       "runtimes\" tree has already been staged (e.g. by CI, merging binaries built on windows/linux/macOS
+       runners), it is packed as-is. Otherwise, the just-built current-platform binary is staged for its own
+       RID so that a plain local "dotnet pack" still produces a working (single-platform) package. -->
+  <Target Name="StageOtelTapCoreNativeForPacking" BeforeTargets="_GetPackageFiles">
+    <PropertyGroup>
+      <_OtelTapCoreStagedDll>$(OtelTapCoreRuntimesDir)\$(OtelTapCoreCurrentRid)\native\$(OtelTapCoreLibFileName)</_OtelTapCoreStagedDll>
+    </PropertyGroup>
+    <Copy SourceFiles="$(OtelTapCoreDll)"
+          DestinationFiles="$(_OtelTapCoreStagedDll)"
+          Condition="Exists('$(OtelTapCoreDll)') And !Exists('$(_OtelTapCoreStagedDll)') And '$(OtelTapCoreCurrentRid)' != ''" />
+    <!-- Explicitly enumerate every RID/filename combination oteltap_core is built for, and pack whichever
+         ones actually exist under runtimes\<rid>\native\<file>. Referencing %(_OtelTapCoreRuntimeCandidate.*)
+         batches this single <None> declaration once per candidate RID. -->
+    <ItemGroup>
+      <_OtelTapCoreRuntimeCandidate Include="win-x64;win-arm64" LibFileName="oteltap_core.dll" />
+      <_OtelTapCoreRuntimeCandidate Include="linux-x64;linux-arm64" LibFileName="liboteltap_core.so" />
+      <_OtelTapCoreRuntimeCandidate Include="osx-x64;osx-arm64" LibFileName="liboteltap_core.dylib" />
+    </ItemGroup>
+    <ItemGroup>
+      <None Include="$(OtelTapCoreRuntimesDir)\%(_OtelTapCoreRuntimeCandidate.Identity)\native\%(_OtelTapCoreRuntimeCandidate.LibFileName)"
+            Condition="Exists('$(OtelTapCoreRuntimesDir)\%(_OtelTapCoreRuntimeCandidate.Identity)\native\%(_OtelTapCoreRuntimeCandidate.LibFileName)')"
+            Pack="true"
+            PackagePath="runtimes\%(_OtelTapCoreRuntimeCandidate.Identity)\native\%(_OtelTapCoreRuntimeCandidate.LibFileName)"
+            Visible="false" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.36.0" />
