@@ -2,6 +2,8 @@
 
 **OtelTap** is a .NET (C#) client library that wraps [OtelTap-Rust](https://github.com/OtelTap/OtelTap-Rust)'s embeddable OTLP (OpenTelemetry Protocol) receiver, giving .NET tests an idiomatic, `async`/`IAsyncEnumerable`-based API to **await and assert on real telemetry** (traces, logs, metrics) emitted by the system under test — instead of guessing timing or mocking the OTel SDK.
 
+[![.NET](https://github.com/OtelTap/OtelTap-DotNet/actions/workflows/dotnet.yml/badge.svg)](https://github.com/OtelTap/OtelTap-DotNet/actions/workflows/dotnet.yml)
+
 ## Built for agentic AI development
 
 OtelTap is designed with **AI coding agents ("copilots") as first-class users**, not just an afterthought. Telemetry is one of the richest sources of ground truth about what a system actually did — far more reliable than logs alone or guessing from source code — and OtelTap is built so an agent can close the loop on its own, without a human relaying data back and forth:
