@@ -1,0 +1,113 @@
+# Builds oteltap_core natively on Windows/Linux/macOS runners (cross-compiling where needed for
+# secondary architectures), assembles all of them into a single OtelTap.csproj "runtimes\" tree, and
+# packs one multi-platform OtelTap NuGet package containing every native binary. The resulting .nupkg
+# is uploaded as a workflow artifact.
+
+name: Pack NuGet
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            target: x86_64-pc-windows-msvc
+            lib_name: oteltap_core.dll
+          - os: ubuntu-latest
+            rid: linux-x64
+            target: x86_64-unknown-linux-gnu
+            lib_name: liboteltap_core.so
+          - os: ubuntu-latest
+            rid: linux-arm64
+            target: aarch64-unknown-linux-gnu
+            lib_name: liboteltap_core.so
+          - os: macos-latest
+            rid: osx-x64
+            target: x86_64-apple-darwin
+            lib_name: liboteltap_core.dylib
+          - os: macos-latest
+            rid: osx-arm64
+            target: aarch64-apple-darwin
+            lib_name: liboteltap_core.dylib
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Clone OtelTap-Rust
+        run: git clone https://github.com/OtelTap/OtelTap-Rust.git oteltap-rust
+
+      - name: Install Rust target ${{ matrix.target }}
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install aarch64 cross-compilation toolchain
+        if: matrix.rid == 'linux-arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      - name: Build oteltap-core (${{ matrix.rid }})
+        working-directory: oteltap-rust/oteltap-core
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload native binary (${{ matrix.rid }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: oteltap-rust/oteltap-core/target/${{ matrix.target }}/release/${{ matrix.lib_name }}
+          if-no-files-found: error
+
+  pack:
+    needs: build-native
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download all native binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: native-artifacts
+
+      - name: Stage native binaries into OtelTap/runtimes/<rid>/native/
+        run: |
+          set -euo pipefail
+          for dir in native-artifacts/native-*/; do
+            rid="$(basename "$dir")"
+            rid="${rid#native-}"
+            mkdir -p "OtelTap/runtimes/$rid/native"
+            cp "$dir"* "OtelTap/runtimes/$rid/native/"
+          done
+          echo "Staged native runtime assets:"
+          find OtelTap/runtimes -type f
+
+      - name: Restore
+        run: dotnet restore OtelTap/OtelTap.csproj
+
+      - name: Pack
+        run: dotnet pack OtelTap/OtelTap.csproj -c Release -o ./nupkg -p:SkipOtelTapCoreNativeBuild=true
+
+      - name: Upload nupkg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: ./nupkg/*.nupkg
+          if-no-files-found: error
