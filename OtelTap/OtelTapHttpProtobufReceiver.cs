@@ -86,7 +86,8 @@ namespace OtelTap
                 (ushort)settings.HttpPort,
                 (settings.PrintTracesAsNdjson ? OtelTapFlags.PrintTracesAsNdjson : OtelTapFlags.None) |
                 (settings.PrintLogsAsNdjson ? OtelTapFlags.PrintLogsAsNdjson : OtelTapFlags.None) |
-                (settings.PrintMetricsAsNdjson ? OtelTapFlags.PrintMetricsAsNdjson : OtelTapFlags.None),
+                (settings.PrintMetricsAsNdjson ? OtelTapFlags.PrintMetricsAsNdjson : OtelTapFlags.None) |
+                (settings.ListenOnAllInterfaces ? OtelTapFlags.ListenOnAllInterfaces : OtelTapFlags.None),
                 settings.ReemitTracesToUrl,
                 settings.ReemitLogsToUrl,
                 settings.ReemitMetricsToUrl,

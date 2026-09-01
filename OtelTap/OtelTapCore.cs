@@ -11,6 +11,8 @@ namespace OtelTap
         PrintTracesAsNdjson = 1 << 0,
         PrintLogsAsNdjson = 1 << 1,
         PrintMetricsAsNdjson = 1 << 2,
+
+        ListenOnAllInterfaces = 1 << 8,
     }
 
     /// <summary>

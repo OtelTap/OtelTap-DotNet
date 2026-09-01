@@ -5,6 +5,7 @@ namespace OtelTap
     /// Settings for OtelTapHttpProtobufReceiver
     /// </summary>
     /// <param name="HttpPort">HTTP port number to listen on</param>
+    /// <param name="ListenOnAllInterfaces">Should the receiver listen on all network interfaces</param>
     /// <param name="PrintTracesAsNdjson">Should traces be printed into standard output (as NDJSON)</param>
     /// <param name="PrintLogsAsNdjson">Should logs be printed into standard output (as NDJSON)</param>
     /// <param name="PrintMetricsAsNdjson">Should logs be printed into standard output (as NDJSON)</param>
@@ -15,6 +16,7 @@ namespace OtelTap
     public record OtelTapHttpProtobufReceiverSettings
     (
         int HttpPort,
+        bool ListenOnAllInterfaces,
         bool PrintTracesAsNdjson,
         bool PrintLogsAsNdjson,
         bool PrintMetricsAsNdjson,
